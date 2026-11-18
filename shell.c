@@ -46,7 +46,7 @@ int main(void)
 		char *arr[100];
 		int count = 0 ;
 		printf("$ ");
-		fflush(stdin);
+		fflush(stdout);
 		
 		if (fgets(input, sizeof(input), stdin) == NULL)
 		{
@@ -96,7 +96,8 @@ int main(void)
 			else if (chdir(destination) == -1)
 			{
 				perror("cd");
-			}else
+			}
+			else
 			{
 
 				if (getcwd(cwd , sizeof(cwd)) != NULL)
@@ -112,11 +113,37 @@ int main(void)
 
 		}else
 		{
+			
 			pid_t pid = fork();
 			int status;
 
 			if (pid == 0)
 			{
+
+				if (count >= 3 && strcmp(arr[count - 2] , ">") == 0)
+				{
+					int fd = open(arr[count - 1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
+					if(fd == -1){
+						perror("open");
+						_exit(1);
+					}else
+					{
+						if (dup2(fd , STDOUT_FILENO) == -1)
+						{
+							perror("dup2");
+							close(fd);
+						}else{
+							arr[count - 2] = NULL;
+							arr[count - 1] = NULL;
+							
+							close(fd);
+						}
+
+					}
+					
+				}
+
 				int task = execvp(arr[0] , arr );
 
 				if (task == -1)
