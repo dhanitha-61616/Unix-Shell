@@ -55,6 +55,9 @@ int main(void)
 
 		int in_red = -1;
 		int in_red_count = 0;
+
+		int out_append = -1;
+		int out_append_count = 0;
 		
 		if (fgets(input, sizeof(input), stdin) == NULL)
 		{
@@ -78,6 +81,12 @@ int main(void)
 			{
 				in_red = count;
 				in_red_count++;
+			}
+
+			if (strcmp(token , ">>") == 0)
+			{
+				out_append = count;
+				out_append_count++;
 			}
 
 			count++;
@@ -139,34 +148,47 @@ int main(void)
 
 			bool syntax_error = false;
 
-			if (out_red_count > 1 || in_red_count > 1)
+			int red_count = out_red_count + in_red_count + out_append_count;
+
+			/* 1. Reject repeated redirection operators */
+			if (out_red_count > 1 ||
+				in_red_count > 1 ||
+				out_append_count > 1)
 			{
 				syntax_error = true;
 			}
 
-			if (out_red == 0 || in_red == 0)
+			/* 2. Reject using > and >> together */
+			if (out_red != -1 && out_append != -1)
 			{
 				syntax_error = true;
 			}
 
-			if ((out_red != -1 && out_red == count - 1) ||
-				(in_red != -1 && in_red == count - 1))
-			{
-				syntax_error = true;
-			}
-
+			/* 3. Validate every redirection operator */
 			for (int i = 0; i < count; i++)
 			{
-				if (strcmp(arr[i], ">") == 0 || strcmp(arr[i], "<") == 0)
+				if (strcmp(arr[i], "<") == 0 ||
+					strcmp(arr[i], ">") == 0 ||
+					strcmp(arr[i], ">>") == 0)
 				{
-					if (i + 1 >= count)
+					/* Operator cannot be the last token */
+					if (i == count - 1)
 					{
 						syntax_error = true;
 						break;
 					}
 
-					if (strcmp(arr[i + 1], ">") == 0 ||
-						strcmp(arr[i + 1], "<") == 0)
+					/* Operator cannot be the first token */
+					if (i == 0)
+					{
+						syntax_error = true;
+						break;
+					}
+
+					/* Filename cannot be another operator */
+					if (strcmp(arr[i + 1], "<") == 0 ||
+						strcmp(arr[i + 1], ">") == 0 ||
+						strcmp(arr[i + 1], ">>") == 0)
 					{
 						syntax_error = true;
 						break;
@@ -174,28 +196,34 @@ int main(void)
 				}
 			}
 
-			if (out_red != -1 && in_red != -1)
-{
-			int first = out_red < in_red ? out_red : in_red;
-			int second = out_red > in_red ? out_red : in_red;
+			/* 4. Validate the position of redirections */
+			if (red_count > 0)
+			{
+				int first = count;
 
-			if (first + 2 != second || second != count - 2)
-			{
-				syntax_error = true;
-			}
-			}
-			else if (out_red != -1 && out_red != count - 2)
-			{
-				syntax_error = true;
-			}
-			else if (in_red != -1 && in_red != count - 2)
-			{
-				syntax_error = true;
+				if (out_red != -1 && out_red < first)
+					first = out_red;
+
+				if (in_red != -1 && in_red < first)
+					first = in_red;
+
+				if (out_append != -1 && out_append < first)
+					first = out_append;
+
+				/*
+				Every redirection must be at the end:
+				operator + filename = 2 tokens
+				*/
+				if (first != count - (red_count * 2))
+				{
+					syntax_error = true;
+				}
 			}
 
+			/* 5. Report syntax errors */
 			if (syntax_error)
 			{
-				fprintf(stderr, "Syntax error near redirection\n");
+				fprintf(stderr, "Syntax error: invalid redirection\n");
 				continue;
 			}
 
@@ -204,6 +232,7 @@ int main(void)
 
 			char *input_file = NULL;
 			char *output_file = NULL;
+			char *append_file = NULL;
 
 			char *args[100];
 			int arg_count = 0;
@@ -218,6 +247,10 @@ int main(void)
 				else if (strcmp(arr[i], ">") == 0)
 				{
 					output_file = arr[i + 1];
+					i++;
+				}else if (strcmp(arr[i] , ">>") == 0)
+				{
+					append_file = arr[i + 1];
 					i++;
 				}
 				else
@@ -261,6 +294,29 @@ int main(void)
 				{
 					int fd = open(output_file,
 								O_WRONLY | O_CREAT | O_TRUNC,
+								0644);
+
+					if (fd == -1)
+					{
+						perror("open output");
+						_exit(1);
+					}
+
+					if (dup2(fd, STDOUT_FILENO) == -1)
+					{
+						perror("dup2 output");
+						close(fd);
+						_exit(1);
+					}
+
+					close(fd);
+				}
+
+				/* Input Append */
+				if(out_append != -1)
+				{
+					int fd = open(append_file,
+								O_WRONLY | O_CREAT | O_APPEND,
 								0644);
 
 					if (fd == -1)
