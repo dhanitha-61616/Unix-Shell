@@ -47,6 +47,14 @@ int main(void)
 		int count = 0 ;
 		printf("$ ");
 		fflush(stdout);
+
+		/*-------------------------------------- Variables ------------------------------------------ */
+
+		int out_red = -1;
+		int out_red_count = 0;
+
+		int in_red = -1;
+		int in_red_count = 0;
 		
 		if (fgets(input, sizeof(input), stdin) == NULL)
 		{
@@ -59,6 +67,19 @@ int main(void)
 		while(token != NULL && count < 99)
 		{
 			arr[count] = token;
+
+			if (strcmp(token , ">") == 0)
+			{
+				out_red = count;
+				out_red_count++;
+			}
+
+			if (strcmp(token , "<") == 0)
+			{
+				in_red = count;
+				in_red_count++;
+			}
+
 			count++;
 
 			token = strtok(NULL , " \n");
@@ -113,44 +134,156 @@ int main(void)
 
 		}else
 		{
-			
+
+			/*--------------------------------------- Validation ---------------------------------------------------------*/
+
+			bool syntax_error = false;
+
+			if (out_red_count > 1 || in_red_count > 1)
+			{
+				syntax_error = true;
+			}
+
+			if (out_red == 0 || in_red == 0)
+			{
+				syntax_error = true;
+			}
+
+			if ((out_red != -1 && out_red == count - 1) ||
+				(in_red != -1 && in_red == count - 1))
+			{
+				syntax_error = true;
+			}
+
+			for (int i = 0; i < count; i++)
+			{
+				if (strcmp(arr[i], ">") == 0 || strcmp(arr[i], "<") == 0)
+				{
+					if (i + 1 >= count)
+					{
+						syntax_error = true;
+						break;
+					}
+
+					if (strcmp(arr[i + 1], ">") == 0 ||
+						strcmp(arr[i + 1], "<") == 0)
+					{
+						syntax_error = true;
+						break;
+					}
+				}
+			}
+
+			if (out_red != -1 && in_red != -1)
+{
+			int first = out_red < in_red ? out_red : in_red;
+			int second = out_red > in_red ? out_red : in_red;
+
+			if (first + 2 != second || second != count - 2)
+			{
+				syntax_error = true;
+			}
+			}
+			else if (out_red != -1 && out_red != count - 2)
+			{
+				syntax_error = true;
+			}
+			else if (in_red != -1 && in_red != count - 2)
+			{
+				syntax_error = true;
+			}
+
+			if (syntax_error)
+			{
+				fprintf(stderr, "Syntax error near redirection\n");
+				continue;
+			}
+
+			/*----------------------------------------------------------------------------------------------------*/
+
+
+			char *input_file = NULL;
+			char *output_file = NULL;
+
+			char *args[100];
+			int arg_count = 0;
+
+			for (int i = 0; i < count; i++)
+			{
+				if (strcmp(arr[i], "<") == 0)
+				{
+					input_file = arr[i + 1];
+					i++;
+				}
+				else if (strcmp(arr[i], ">") == 0)
+				{
+					output_file = arr[i + 1];
+					i++;
+				}
+				else
+				{
+					args[arg_count++] = arr[i];
+				}
+			}
+
+			args[arg_count] = NULL;
+
 			pid_t pid = fork();
 			int status;
 
 			if (pid == 0)
 			{
-
-				if (count >= 3 && strcmp(arr[count - 2] , ">") == 0)
+			if (pid == 0)
+			{
+				/* Input Redirection */
+				if (input_file != NULL)
 				{
-					int fd = open(arr[count - 1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+					int fd = open(input_file, O_RDONLY);
 
-					if(fd == -1){
-						perror("open");
-						_exit(1);
-					}else
+					if (fd == -1)
 					{
-						if (dup2(fd , STDOUT_FILENO) == -1)
-						{
-							perror("dup2");
-							close(fd);
-						}else{
-							arr[count - 2] = NULL;
-							arr[count - 1] = NULL;
-							
-							close(fd);
-						}
-
+						perror("open input");
+						_exit(1);
 					}
-					
+
+					if (dup2(fd, STDIN_FILENO) == -1)
+					{
+						perror("dup2 input");
+						close(fd);
+						_exit(1);
+					}
+
+					close(fd);
 				}
 
-				int task = execvp(arr[0] , arr );
-
-				if (task == -1)
+				/* Output Redirection */
+				if (output_file != NULL)
 				{
-					perror(arr[0]);
-					_exit(127);
+					int fd = open(output_file,
+								O_WRONLY | O_CREAT | O_TRUNC,
+								0644);
+
+					if (fd == -1)
+					{
+						perror("open output");
+						_exit(1);
+					}
+
+					if (dup2(fd, STDOUT_FILENO) == -1)
+					{
+						perror("dup2 output");
+						close(fd);
+						_exit(1);
+					}
+
+					close(fd);
 				}
+
+				execvp(args[0], args);
+
+				perror(args[0]);
+				_exit(127);
+			}
 			}
 			else if (pid > 0)
 			{
